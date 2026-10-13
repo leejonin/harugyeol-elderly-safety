@@ -10,7 +10,7 @@
 
   var session = Common.getSession();
   if (session) {
-    window.location.href = "dashboard.html";
+    window.location.href = Common.appPath("dashboard.html");
     return;
   }
 
@@ -62,7 +62,7 @@
       name: user.name,
       role: user.role,
     });
-    window.location.href = "dashboard.html";
+    window.location.href = Common.appPath("dashboard.html");
   });
 
   document.getElementById("btn-reset-demo").addEventListener("click", function () {

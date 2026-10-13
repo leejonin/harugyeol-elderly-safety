@@ -8,6 +8,20 @@
   var SESSION_KEY = "harugyeol_session";
 
   /**
+   * GitHub Pages 등 하위 경로에서도 동작하도록 상대 경로를 만듭니다.
+   * @param {string} relative - 예: login.html, css/style.css
+   * @returns {string}
+   */
+  function appPath(relative) {
+    if (global.location.protocol === "file:") {
+      return relative;
+    }
+    var path = global.location.pathname || "/";
+    var base = path.endsWith("/") ? path : path.replace(/\/[^/]*$/, "/");
+    return base + relative.replace(/^\//, "");
+  }
+
+  /**
    * 상태 코드별 표시 문구와 배지 클래스
    * @type {Object.<string, {label: string, badgeClass: string}>}
    */
@@ -166,7 +180,7 @@
   function requireAuth() {
     var session = getSession();
     if (!session) {
-      global.location.href = "login.html";
+      global.location.href = appPath("login.html");
       return null;
     }
     return session;
@@ -249,7 +263,7 @@
     var attr = current ? ' aria-current="page"' : "";
     return (
       '<a class="mobile-bottom-nav__item" href="' +
-      href +
+      appPath(href) +
       '"' +
       attr +
       ">" +
@@ -322,14 +336,14 @@
         navLink("settings.html", "설정", activePage === "settings") +
         navLink("chat.html", "AI 대화", activePage === "chat") +
         navLink("help.html", "도움", activePage === "help") +
-        '<a href="index.html">서비스 소개</a>' +
+        '<a href="' + appPath("index.html") + '">서비스 소개</a>' +
         '<button type="button" class="btn btn--secondary btn--small" id="btn-logout">로그아웃</button>' +
         "</nav>";
     } else {
       nav =
         '<nav class="site-nav site-nav--compact" id="site-nav-primary">' +
-        '<a href="index.html">서비스 소개</a>' +
-        '<a href="login.html">로그인</a>' +
+        '<a href="' + appPath("index.html") + '">서비스 소개</a>' +
+        '<a href="' + appPath("login.html") + '">로그인</a>' +
         "</nav>";
       navToggle = "";
     }
@@ -346,7 +360,7 @@
       '<div class="site-header__inner">' +
       '<div class="site-header__row">' +
       '<a class="site-logo" href="' +
-      (session ? "dashboard.html" : "index.html") +
+      appPath(session ? "dashboard.html" : "index.html") +
       '">하루결</a>' +
       navToggle +
       "</div>" +
@@ -360,7 +374,7 @@
     if (logoutBtn) {
       logoutBtn.addEventListener("click", function () {
         clearSession();
-        global.location.href = "login.html";
+        global.location.href = appPath("login.html");
       });
     }
 
@@ -400,7 +414,9 @@
    */
   function navLink(href, label, current) {
     var attr = current ? ' aria-current="page"' : "";
-    return '<a href="' + href + '"' + attr + ">" + escapeHtml(label) + "</a>";
+    return (
+      '<a href="' + appPath(href) + '"' + attr + ">" + escapeHtml(label) + "</a>"
+    );
   }
 
   /**
@@ -451,5 +467,6 @@
     getAccessibleElders: getAccessibleElders,
     isGptChatConfigured: isGptChatConfigured,
     getChatThreadSummary: getChatThreadSummary,
+    appPath: appPath,
   };
 })(window);
