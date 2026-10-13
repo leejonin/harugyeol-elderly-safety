@@ -1,0 +1,475 @@
+/**
+ * AI 대화·안부 채팅 페이지 (file:// 호환)
+ */
+(function () {
+  "use strict";
+
+  var Common = window.Harugyeol.Common;
+  var Data = window.Harugyeol.Data;
+  var LLM = window.Harugyeol.LLM;
+
+  if (!Common || !Data || !LLM) {
+    var rootErr = document.getElementById("chat-root");
+    if (rootErr) {
+      rootErr.innerHTML =
+        '<div class="section"><p>스크립트를 불러오지 못했습니다. chat.html을 프로젝트 폴더에서 다시 열어 주세요.</p></div>';
+    }
+    return;
+  }
+
+  var session = Common.getSession();
+  if (!session) {
+    Common.requireAuth();
+    var rootLogin = document.getElementById("chat-root");
+    if (rootLogin) {
+      rootLogin.innerHTML =
+        '<div class="section"><p>로그인이 필요합니다.</p><p><a class="btn" href="login.html">시연 로그인</a></p></div>';
+    }
+    return;
+  }
+
+  document.body.classList.add("page-chat");
+  Common.renderHeader("chat", document.getElementById("site-header"));
+
+  var store = Data.getStore();
+  var elders = Common.getAccessibleElders(store, session.userId);
+  var root = document.getElementById("chat-root");
+
+  /**
+   * @param {string} elderId
+   * @returns {string}
+   */
+  function threadKey(elderId) {
+    return "harugyeol_chat_" + elderId;
+  }
+
+  /**
+   * @param {string} elderId
+   * @returns {{ messages: Array, lastSummary: string|null, updatedAt: string|null }}
+   */
+  function loadThread(elderId) {
+    try {
+      var raw = localStorage.getItem(threadKey(elderId));
+      if (!raw) {
+        return { messages: [], lastSummary: null, updatedAt: null };
+      }
+      return JSON.parse(raw);
+    } catch (e) {
+      return { messages: [], lastSummary: null, updatedAt: null };
+    }
+  }
+
+  /**
+   * @param {string} elderId
+   * @param {Object} thread
+   */
+  function saveThread(elderId, thread) {
+    thread.updatedAt = new Date().toISOString();
+    localStorage.setItem(threadKey(elderId), JSON.stringify(thread));
+  }
+
+  /**
+   * @param {string} elderId
+   * @returns {string}
+   */
+  function buildSensorHints(elderId) {
+    var signals = store.signals
+      .filter(function (s) {
+        return s.elderId === elderId;
+      })
+      .slice(0, 3);
+    if (signals.length === 0) {
+      return "최근 생활 신호 예시 데이터가 없습니다.";
+    }
+    return signals
+      .map(function (s) {
+        return s.summary;
+      })
+      .join("; ");
+  }
+
+  /** @type {RegExp} OpenAI API 키 형식 (sk- + 영문·숫자·._-) */
+  var API_KEY_PATTERN = /^sk-[A-Za-z0-9._-]+$/;
+
+  /**
+   * API 키 형식이 올바른지 확인합니다.
+   * @param {string} key
+   * @returns {boolean}
+   */
+  function isValidApiKey(key) {
+    return API_KEY_PATTERN.test(key);
+  }
+
+  /**
+   * 입력 중 허용 문자만 남기고 sk- 접두 형태를 유지합니다.
+   * @param {string} value
+   * @returns {string}
+   */
+  function sanitizeApiKeyInput(value) {
+    var v = value.replace(/[^A-Za-z0-9._-]/g, "");
+    if (!v) {
+      return "";
+    }
+    if (v.startsWith("sk-")) {
+      return v;
+    }
+    if (v === "s" || v === "sk") {
+      return v;
+    }
+    if (v.startsWith("sk") && v.length > 2 && v[2] !== "-") {
+      return "sk-" + v.slice(2);
+    }
+    if (!v.startsWith("s")) {
+      return "";
+    }
+    return v;
+  }
+
+  /**
+   * API 키 입력 필드에 실시간 필터를 연결합니다.
+   * @param {HTMLInputElement} inputEl
+   */
+  function bindApiKeyInput(inputEl) {
+    inputEl.addEventListener("input", function () {
+      var cleaned = sanitizeApiKeyInput(inputEl.value);
+      if (cleaned !== inputEl.value) {
+        inputEl.value = cleaned;
+      }
+      inputEl.setCustomValidity(
+        cleaned && !isValidApiKey(cleaned) && cleaned.length > 3
+          ? "sk-로 시작하는 올바른 키 형식이 아닙니다."
+          : ""
+      );
+    });
+    inputEl.addEventListener("paste", function (ev) {
+      ev.preventDefault();
+      var paste = (ev.clipboardData || window.clipboardData).getData("text");
+      inputEl.value = sanitizeApiKeyInput(paste);
+      inputEl.dispatchEvent(new Event("input"));
+    });
+  }
+
+  /**
+   * 메시지 한 줄 HTML (GPT 스타일)
+   * @param {{ role: string, content: string, pending?: boolean }} m
+   * @returns {string}
+   */
+  function messageRowHtml(m) {
+    var isUser = m.role === "user";
+    var cls = "gpt-msg gpt-msg--" + (isUser ? "user" : "assistant");
+    if (m.pending) {
+      cls += " gpt-msg--pending";
+    }
+    var avatar = isUser ? "나" : "하";
+    var label = isUser ? "나" : "하루결 도우미";
+    return (
+      '<div class="' +
+      cls +
+      '">' +
+      '<div class="gpt-msg__avatar" aria-hidden="true">' +
+      avatar +
+      "</div>" +
+      '<div class="gpt-msg__content">' +
+      '<span class="gpt-msg__label">' +
+      Common.escapeHtml(label) +
+      "</span>" +
+      '<div class="gpt-msg__text">' +
+      Common.escapeHtml(m.content) +
+      "</div></div></div>"
+    );
+  }
+
+  /**
+   * 대화 영역 맨 아래로 스크롤
+   */
+  function scrollChatToBottom() {
+    var el = document.getElementById("chat-messages");
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  /**
+   * @param {string} elderId
+   */
+  function render(elderId) {
+    var config = LLM.getConfig();
+    var status = LLM.getStatus();
+    var thread = loadThread(elderId);
+    var elder = elders.find(function (e) {
+      return e.id === elderId;
+    });
+
+    var elderOptions = elders
+      .map(function (e) {
+        var sel = e.id === elderId ? " selected" : "";
+        return (
+          '<option value="' +
+          Common.escapeHtml(e.id) +
+          '"' +
+          sel +
+          ">" +
+          Common.escapeHtml(e.name) +
+          "</option>"
+        );
+      })
+      .join("");
+
+    var masked = config.apiKey ? LLM.maskApiKey(config.apiKey) : "";
+    var elderName = elder ? elder.name : "대상자";
+    var statusClass =
+      status.mode === "openai"
+        ? "status-badge--ok"
+        : status.mode === "mock"
+          ? "status-badge--watch"
+          : "status-badge--neutral";
+
+    var html = '<div class="gpt-chat-app">';
+    html += '<div class="gpt-chat-sidebar-backdrop" id="sidebar-backdrop" hidden></div>';
+    html += '<aside class="gpt-chat-sidebar" id="chat-sidebar" aria-label="채팅 설정">';
+    html += '<div class="gpt-chat-sidebar__head"><strong>설정</strong>';
+    html +=
+      '<button type="button" class="gpt-chat-sidebar-close" id="btn-close-sidebar" aria-label="설정 닫기">×</button></div>';
+    html += '<div class="form-group"><label for="elder-select">대화 대상</label>';
+    html += '<select id="elder-select">' + elderOptions + "</select></div>";
+    html += "<h3 class=\"gpt-chat-sidebar__title\">GPT 연결</h3>";
+    html += '<p class="muted gpt-chat-sidebar__hint">키는 이 브라우저에만 저장됩니다.</p>';
+    if (masked) {
+      html += "<p class=\"gpt-chat-sidebar__key\">저장됨: " + Common.escapeHtml(masked) + "</p>";
+    }
+    html += '<div class="form-group"><label for="api-key">API Key</label>';
+    html +=
+      '<input type="password" id="api-key" class="api-key-input" autocomplete="off" spellcheck="false" ' +
+      'placeholder="sk-..." pattern="sk-[A-Za-z0-9._-]+" ' +
+      'title="sk-로 시작, 영문·숫자·.(점)·_(밑줄)·-(하이픈)만 입력 가능" /></div>';
+    html +=
+      '<p class="muted gpt-chat-sidebar__hint">형식: sk- 로 시작 · 영문, 숫자, . _ - 만 허용</p>';
+    html += '<div class="form-group"><label for="api-model">모델</label>';
+    html +=
+      '<input type="text" id="api-model" value="' +
+      Common.escapeHtml(config.model || LLM.DEFAULT_MODEL) +
+      '" /></div>';
+    html +=
+      '<label class="chat-check"><input type="checkbox" id="force-mock"' +
+      (config.forceMock ? " checked" : "") +
+      " /> 목 모드</label>";
+    html += '<div class="gpt-chat-sidebar__actions">';
+    html += '<button type="button" class="btn btn--small" id="btn-save-key">키 저장</button>';
+    html += '<button type="button" class="btn btn--secondary btn--small" id="btn-clear-key">키 삭제</button>';
+    html += "</div>";
+    if (thread.lastSummary) {
+      html += '<details class="gpt-chat-summary-fold"><summary>마지막 상태 요약</summary>';
+      html +=
+        '<pre class="chat-summary-pre">' +
+        Common.escapeHtml(thread.lastSummary) +
+        "</pre>";
+      html +=
+        '<a href="dashboard.html?elder=' +
+        encodeURIComponent(elderId) +
+        '">대시보드</a></details>';
+    }
+    html += "</aside>";
+
+    html += '<div class="gpt-chat-main">';
+    html += '<header class="gpt-chat-toolbar">';
+    html +=
+      '<button type="button" class="gpt-chat-toolbar__menu" id="btn-open-sidebar" aria-label="설정 열기">☰</button>';
+    html += '<div class="gpt-chat-toolbar__title">';
+    html += "<h1>" + Common.escapeHtml(elderName) + " · AI 안부</h1>";
+    html +=
+      '<span class="status-badge ' +
+      statusClass +
+      " gpt-chat-toolbar__badge\">" +
+      Common.escapeHtml(status.label) +
+      "</span></div>";
+    html += "</header>";
+
+    html += '<div class="gpt-chat-thread" id="chat-messages" role="log" aria-live="polite">';
+    if (thread.messages.length === 0) {
+      html += '<div class="gpt-chat-welcome">';
+      html += '<div class="gpt-chat-welcome__logo">하</div>';
+      html += "<h2>하루결 AI 도우미</h2>";
+      html += "<p>어르신과 편하게 대화하거나, 상태 요약을 요청할 수 있습니다.</p>";
+      html += '<p class="muted">☰ 설정에서 GPT API 키를 입력하세요.</p></div>';
+    } else {
+      html += '<div class="gpt-chat-thread__inner">';
+      thread.messages.forEach(function (m) {
+        html += messageRowHtml(m);
+      });
+      html += "</div>";
+    }
+    html += "</div>";
+
+    html += '<footer class="gpt-chat-composer">';
+    html += '<div class="gpt-chat-composer__box">';
+    html += '<label class="sr-only" for="chat-input">메시지</label>';
+    html +=
+      '<textarea id="chat-input" rows="1" placeholder="메시지를 입력하세요…"></textarea>';
+    html +=
+      '<button type="button" class="gpt-chat-send" id="btn-send" aria-label="보내기">↑</button>';
+    html += "</div>";
+    html += '<div class="gpt-chat-composer__meta">';
+    html +=
+      '<button type="button" class="gpt-chat-link-btn" id="btn-summary">상태 요약</button>';
+    html += "<span>·</span>";
+    html +=
+      '<button type="button" class="gpt-chat-link-btn" id="btn-clear-chat">대화 초기화</button>';
+    html += '<span class="muted">Enter 전송 · Shift+Enter 줄바꿈</span>';
+    html += "</div></footer></div></div>";
+
+    root.innerHTML = html;
+    scrollChatToBottom();
+
+    function openSidebar() {
+      document.getElementById("chat-sidebar").classList.add("is-open");
+      var bd = document.getElementById("sidebar-backdrop");
+      bd.hidden = false;
+    }
+    function closeSidebar() {
+      document.getElementById("chat-sidebar").classList.remove("is-open");
+      document.getElementById("sidebar-backdrop").hidden = true;
+    }
+    document.getElementById("btn-open-sidebar").addEventListener("click", openSidebar);
+    document.getElementById("btn-close-sidebar").addEventListener("click", closeSidebar);
+    document.getElementById("sidebar-backdrop").addEventListener("click", closeSidebar);
+
+    var apiKeyInput = document.getElementById("api-key");
+    bindApiKeyInput(apiKeyInput);
+
+    document.getElementById("btn-save-key").addEventListener("click", function () {
+      var key = sanitizeApiKeyInput(apiKeyInput.value.trim());
+      if (key && !isValidApiKey(key)) {
+        alert(
+          "API 키는 sk- 로 시작해야 하며, 영문·숫자·.(점)·_(밑줄)·-(하이픈)만 사용할 수 있습니다."
+        );
+        apiKeyInput.focus();
+        return;
+      }
+      var model =
+        document.getElementById("api-model").value.trim() || LLM.DEFAULT_MODEL;
+      var forceMock = document.getElementById("force-mock").checked;
+      var prev = LLM.getConfig();
+      LLM.saveConfig({
+        apiKey: key || prev.apiKey,
+        model: model,
+        baseUrl: LLM.DEFAULT_BASE_URL,
+        forceMock: forceMock,
+      });
+      apiKeyInput.value = "";
+      render(elderId);
+    });
+
+    document.getElementById("btn-clear-key").addEventListener("click", function () {
+      LLM.clearApiKey();
+      render(elderId);
+    });
+
+    document.getElementById("elder-select").addEventListener("change", function () {
+      window.location.href = "chat.html?elder=" + encodeURIComponent(this.value);
+    });
+
+    /**
+     * @param {boolean} summaryMode
+     */
+    function sendMessage(summaryMode) {
+      var input = document.getElementById("chat-input");
+      var text = summaryMode
+        ? "오늘 대화를 바탕으로 상태 요약을 요청합니다."
+        : input.value.trim();
+      if (!text) {
+        return;
+      }
+      var cfg = LLM.getConfig();
+      var threadNow = loadThread(elderId);
+      threadNow.messages.push({ role: "user", content: text });
+      saveThread(elderId, threadNow);
+      input.value = "";
+      render(elderId);
+
+      var inner = document.querySelector(".gpt-chat-thread__inner");
+      if (inner) {
+        inner.insertAdjacentHTML(
+          "beforeend",
+          messageRowHtml({
+            role: "assistant",
+            content: "답변을 준비하고 있습니다…",
+            pending: true,
+          })
+        );
+        scrollChatToBottom();
+      }
+
+      var context = {
+        elderName: elder ? elder.name : "",
+        sensorHints: buildSensorHints(elderId),
+        mode: summaryMode ? "summary_request" : "chat",
+      };
+
+      var history = threadNow.messages.map(function (m) {
+        return { role: m.role, content: m.content };
+      });
+
+      LLM.chat(history, context)
+        .then(function (result) {
+          var updated = loadThread(elderId);
+          updated.messages.push({ role: "assistant", content: result.content });
+          if (summaryMode) {
+            updated.lastSummary = result.content;
+          }
+          saveThread(elderId, updated);
+          render(elderId);
+          if (!cfg.apiKey && !cfg.forceMock && !summaryMode) {
+            var meta = root.querySelector(".gpt-chat-composer__meta");
+            if (meta && !meta.querySelector(".gpt-key-hint")) {
+              var note = document.createElement("span");
+              note.className = "muted gpt-key-hint";
+              note.textContent = " · GPT API 키를 설정에서 저장하세요";
+              meta.appendChild(note);
+            }
+          }
+        })
+        .catch(function (err) {
+          render(elderId);
+          alert(err.message || "오류가 발생했습니다.");
+        });
+    }
+
+    document.getElementById("btn-send").addEventListener("click", function () {
+      sendMessage(false);
+    });
+    var chatInput = document.getElementById("chat-input");
+    chatInput.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        sendMessage(false);
+      }
+    });
+    document.getElementById("btn-summary").addEventListener("click", function () {
+      sendMessage(true);
+    });
+    document.getElementById("btn-clear-chat").addEventListener("click", function () {
+      if (window.confirm("이 어르신과의 대화를 모두 지울까요?")) {
+        saveThread(elderId, { messages: [], lastSummary: null, updatedAt: null });
+        render(elderId);
+      }
+    });
+  }
+
+  var elderParam = Common.getQueryParam("elder");
+  var selectedId =
+    elderParam &&
+    elders.some(function (e) {
+      return e.id === elderParam;
+    })
+      ? elderParam
+      : elders[0]
+        ? elders[0].id
+        : null;
+
+  if (!selectedId) {
+    root.innerHTML =
+      '<div class="section"><p>연결된 대상자가 없습니다. <a href="login.html">로그인</a> 후 이용하세요.</p></div>';
+  } else {
+    render(selectedId);
+  }
+})();
