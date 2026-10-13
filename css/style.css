@@ -788,6 +788,25 @@ a:hover {
   background: var(--color-surface);
 }
 
+.gpt-chat-stop-tts {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gpt-chat-stop-tts:hover {
+  border-color: var(--color-primary);
+  background: var(--color-info-bg);
+}
+
 .gpt-chat-toolbar__menu {
   display: none;
   border: 1px solid var(--color-border);
@@ -917,6 +936,29 @@ a:hover {
   line-height: 1.55;
 }
 
+.gpt-msg__tools {
+  margin-top: 0.5rem;
+}
+
+.gpt-msg-tts {
+  min-height: 32px;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.gpt-msg-tts:hover,
+.gpt-msg-tts:focus-visible {
+  border-color: var(--color-border);
+  background: var(--color-info-bg);
+  color: var(--color-primary);
+}
+
 .gpt-chat-composer {
   padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(to top, var(--color-bg) 70%, transparent);
@@ -1021,6 +1063,11 @@ a:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .gpt-chat-stop-tts {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.75rem;
   }
 
   .page-chat.has-bottom-nav .gpt-chat-composer {

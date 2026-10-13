@@ -34,6 +34,72 @@
   var store = Data.getStore();
   var elders = Common.getAccessibleElders(store, session.userId);
   var root = document.getElementById("chat-root");
+  var TTS_STORAGE_KEY = "harugyeol_tts_enabled";
+
+  /**
+   * 현재 브라우저가 음성 합성을 지원하는지 확인합니다.
+   * @returns {boolean}
+   */
+  function isTtsSupported() {
+    return (
+      "speechSynthesis" in window &&
+      typeof window.SpeechSynthesisUtterance === "function"
+    );
+  }
+
+  /**
+   * 답변 자동 읽기 설정을 반환합니다. 최초에는 켜진 상태입니다.
+   * @returns {boolean}
+   */
+  function isTtsEnabled() {
+    var saved = localStorage.getItem(TTS_STORAGE_KEY);
+    return saved === null ? true : saved === "1";
+  }
+
+  /**
+   * 답변 자동 읽기 설정을 저장합니다.
+   * @param {boolean} enabled
+   */
+  function saveTtsEnabled(enabled) {
+    localStorage.setItem(TTS_STORAGE_KEY, enabled ? "1" : "0");
+  }
+
+  /**
+   * 읽고 있는 음성을 즉시 중지합니다.
+   */
+  function stopSpeech() {
+    if (isTtsSupported()) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  /**
+   * 브라우저의 한국어 음성을 우선 사용해 텍스트를 읽습니다.
+   * @param {string} text
+   * @returns {boolean} 읽기 시작 여부
+   */
+  function speakText(text) {
+    if (!isTtsSupported() || !text) {
+      return false;
+    }
+
+    stopSpeech();
+    var utterance = new window.SpeechSynthesisUtterance(
+      String(text).replace(/[*#`]/g, "")
+    );
+    var voices = window.speechSynthesis.getVoices();
+    var koreanVoice = voices.find(function (voice) {
+      return /^ko(?:-|_)/i.test(voice.lang || "");
+    });
+    utterance.lang = "ko-KR";
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    if (koreanVoice) {
+      utterance.voice = koreanVoice;
+    }
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
 
   /**
    * @param {string} elderId
@@ -152,9 +218,10 @@
   /**
    * 메시지 한 줄 HTML (GPT 스타일)
    * @param {{ role: string, content: string, pending?: boolean }} m
+   * @param {number} [messageIndex] - 저장된 대화 내 메시지 위치
    * @returns {string}
    */
-  function messageRowHtml(m) {
+  function messageRowHtml(m, messageIndex) {
     var isUser = m.role === "user";
     var cls = "gpt-msg gpt-msg--" + (isUser ? "user" : "assistant");
     if (m.pending) {
@@ -162,6 +229,12 @@
     }
     var avatar = isUser ? "나" : "하";
     var label = isUser ? "나" : "하루결 도우미";
+    var ttsButton =
+      !isUser && !m.pending && typeof messageIndex === "number"
+        ? '<div class="gpt-msg__tools"><button type="button" class="gpt-msg-tts" data-message-index="' +
+          messageIndex +
+          '" aria-label="이 답변 읽기">🔊 읽기</button></div>'
+        : "";
     return (
       '<div class="' +
       cls +
@@ -175,7 +248,9 @@
       "</span>" +
       '<div class="gpt-msg__text">' +
       Common.escapeHtml(m.content) +
-      "</div></div></div>"
+      "</div>" +
+      ttsButton +
+      "</div></div>"
     );
   }
 
@@ -253,6 +328,15 @@
       '<label class="chat-check"><input type="checkbox" id="force-mock"' +
       (config.forceMock ? " checked" : "") +
       " /> 목 모드</label>";
+    html += "<h3 class=\"gpt-chat-sidebar__title\">음성 읽기</h3>";
+    html +=
+      '<label class="chat-check"><input type="checkbox" id="tts-enabled"' +
+      (isTtsEnabled() ? " checked" : "") +
+      (isTtsSupported() ? "" : " disabled") +
+      " /> AI 답변 자동 읽기</label>";
+    html += isTtsSupported()
+      ? '<p class="muted gpt-chat-sidebar__hint">브라우저의 기본 한국어 음성을 사용합니다.</p>'
+      : '<p class="muted gpt-chat-sidebar__hint">이 브라우저는 음성 읽기를 지원하지 않습니다.</p>';
     html += '<div class="gpt-chat-sidebar__actions">';
     html += '<button type="button" class="btn btn--small" id="btn-save-key">키 저장</button>';
     html += '<button type="button" class="btn btn--secondary btn--small" id="btn-clear-key">키 삭제</button>';
@@ -282,6 +366,10 @@
       " gpt-chat-toolbar__badge\">" +
       Common.escapeHtml(status.label) +
       "</span></div>";
+    if (isTtsSupported()) {
+      html +=
+        '<button type="button" class="gpt-chat-stop-tts" id="btn-stop-tts" aria-label="음성 읽기 중지">■ 음성 중지</button>';
+    }
     html += "</header>";
 
     html += '<div class="gpt-chat-thread" id="chat-messages" role="log" aria-live="polite">';
@@ -293,8 +381,8 @@
       html += '<p class="muted">☰ 설정에서 GPT API 키를 입력하세요.</p></div>';
     } else {
       html += '<div class="gpt-chat-thread__inner">';
-      thread.messages.forEach(function (m) {
-        html += messageRowHtml(m);
+      thread.messages.forEach(function (m, index) {
+        html += messageRowHtml(m, index);
       });
       html += "</div>";
     }
@@ -336,6 +424,29 @@
     var apiKeyInput = document.getElementById("api-key");
     bindApiKeyInput(apiKeyInput);
 
+    var ttsEnabledInput = document.getElementById("tts-enabled");
+    ttsEnabledInput.addEventListener("change", function () {
+      saveTtsEnabled(ttsEnabledInput.checked);
+      if (!ttsEnabledInput.checked) {
+        stopSpeech();
+      }
+    });
+
+    var stopTtsButton = document.getElementById("btn-stop-tts");
+    if (stopTtsButton) {
+      stopTtsButton.addEventListener("click", stopSpeech);
+    }
+
+    root.querySelectorAll(".gpt-msg-tts").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var index = Number(button.getAttribute("data-message-index"));
+        var message = thread.messages[index];
+        if (message && message.role === "assistant") {
+          speakText(message.content);
+        }
+      });
+    });
+
     document.getElementById("btn-save-key").addEventListener("click", function () {
       var key = sanitizeApiKeyInput(apiKeyInput.value.trim());
       if (key && !isValidApiKey(key)) {
@@ -365,6 +476,7 @@
     });
 
     document.getElementById("elder-select").addEventListener("change", function () {
+      stopSpeech();
       window.location.href = "chat.html?elder=" + encodeURIComponent(this.value);
     });
 
@@ -418,6 +530,9 @@
           }
           saveThread(elderId, updated);
           render(elderId);
+          if (isTtsEnabled()) {
+            speakText(result.content);
+          }
           if (!cfg.apiKey && !cfg.forceMock && !summaryMode) {
             var meta = root.querySelector(".gpt-chat-composer__meta");
             if (meta && !meta.querySelector(".gpt-key-hint")) {
@@ -449,6 +564,7 @@
     });
     document.getElementById("btn-clear-chat").addEventListener("click", function () {
       if (window.confirm("이 어르신과의 대화를 모두 지울까요?")) {
+        stopSpeech();
         saveThread(elderId, { messages: [], lastSummary: null, updatedAt: null });
         render(elderId);
       }
@@ -472,4 +588,6 @@
   } else {
     render(selectedId);
   }
+
+  window.addEventListener("beforeunload", stopSpeech);
 })();
