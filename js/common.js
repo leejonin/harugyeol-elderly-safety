@@ -316,7 +316,7 @@
 
   /**
    * 공통 헤더를 렌더링합니다.
-   * @param {string} activePage - dashboard | pattern | alerts | settings | intro | login
+   * @param {string} activePage - dashboard | pattern | alerts | settings | dataset | chat | help | intro | login
    * @param {HTMLElement} mountEl
    */
   function renderHeader(activePage, mountEl) {
@@ -335,6 +335,7 @@
         navLink("alerts.html", "알림·대응", activePage === "alerts") +
         navLink("settings.html", "설정", activePage === "settings") +
         navLink("chat.html", "AI 대화", activePage === "chat") +
+        navLink("dataset.html", "CSV 시연", activePage === "dataset") +
         navLink("help.html", "도움", activePage === "help") +
         '<a href="' + appPath("index.html") + '">서비스 소개</a>' +
         '<button type="button" class="btn btn--secondary btn--small" id="btn-logout">로그아웃</button>' +

@@ -1,0 +1,6 @@
+﻿scenario,meaning,is_real_incident_label
+normal,일반 생활 패턴,no
+prolonged_inactivity,활동 시간대 장시간 움직임 없음,no
+gas_sensor_alert,가스 센서 경보 가정,no
+medication_unconfirmed,복약 확인 누락,no
+checkin_no_response,안부 확인 무응답,no

@@ -1124,3 +1124,208 @@ a:hover {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+/* CSV 데이터 시연 (3.4.1) */
+.dataset-synthetic-warn {
+  background: #fff3cd;
+  border: 1px solid #e9c46a;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.dataset-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dataset-summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.dataset-summary-card__label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-muted, #666);
+  margin-bottom: 0.25rem;
+}
+
+.dataset-summary-card__value {
+  font-weight: 700;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.dataset-section-title {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+  color: var(--color-primary);
+}
+
+.dataset-scenario-list ul {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  font-size: 0.92rem;
+}
+
+.dataset-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+}
+
+.dataset-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  min-width: 10rem;
+}
+
+.dataset-filters select {
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+
+.dataset-chart-card {
+  margin-bottom: 1rem;
+}
+
+.dataset-canvas-wrap {
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+.dataset-canvas {
+  display: block;
+  width: 100%;
+  height: 200px;
+}
+
+.dataset-canvas-wrap--events .dataset-canvas--events {
+  height: 100px;
+}
+
+.dataset-event-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.dataset-event-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dataset-event-legend__swatch {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.scenario-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #e8f5e9;
+  color: #1b4332;
+  white-space: nowrap;
+}
+
+.scenario-badge--prolonged_inactivity {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.scenario-badge--gas_sensor_alert {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.scenario-badge--medication_unconfirmed {
+  background: #f3e5f5;
+  color: #6a1b9a;
+}
+
+.scenario-badge--checkin_no_response {
+  background: #eceff1;
+  color: #37474f;
+}
+
+.dataset-table-scroll {
+  max-width: 100%;
+}
+
+.dataset-data-table {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.dataset-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.dataset-file-fallback {
+  margin-top: 1rem;
+}
+
+.dataset-file-label {
+  display: block;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.dataset-file-label input {
+  display: block;
+  margin-top: 0.25rem;
+  max-width: 100%;
+}
+
+.dataset-status {
+  margin: 0.5rem 0 1rem;
+}
+
+.dataset-skip-note {
+  font-size: 0.85rem;
+  color: #856404;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .dataset-filters__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dataset-filters label {
+    width: 100%;
+  }
+
+  .dataset-canvas {
+    height: 160px;
+  }
+}

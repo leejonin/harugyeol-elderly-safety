@@ -21,7 +21,10 @@
     helpBannerHtml =
       '<div class="dashboard-help-banner" id="dashboard-help-banner">' +
       "<span>처음이신가요? <strong>사용자 도움</strong>에서 AI 대화와 대시보드 사용법을 안내합니다.</span>" +
-      '<span><a class="btn btn--small" href="help.html">도움 보기</a> ' +
+      '<span><a class="btn btn--small btn--secondary" href="' +
+      Common.appPath("dataset.html") +
+      '">CSV 시연</a> ' +
+      '<a class="btn btn--small" href="help.html">도움 보기</a> ' +
       '<button type="button" class="btn btn--secondary btn--small" id="btn-dismiss-help">닫기</button></span>' +
       "</div>";
   }
