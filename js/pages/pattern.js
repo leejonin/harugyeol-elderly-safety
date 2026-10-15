@@ -5,6 +5,9 @@
   "use strict";
   var Common = window.Harugyeol.Common;
   var Data = window.Harugyeol.Data;
+  var Dataset = window.Harugyeol.Dataset;
+  var PatternAnalysis = window.Harugyeol.PatternAnalysis;
+  var PatternAnalysisUI = window.Harugyeol.PatternAnalysisUI;
 
   var session = Common.requireAuth();
   if (!session) {
@@ -18,6 +21,11 @@
 
   var elderId = Common.getQueryParam("elder") || (elders[0] ? elders[0].id : "");
   var kindFilter = Common.getQueryParam("kind") || "all";
+
+  var csvAnalysisOpts = {
+    learnEnd: PatternAnalysis.DEFAULT_LEARN_END,
+    analyzeDate: "2026-10-14",
+  };
 
   /**
    * 센서 종류 한글
@@ -241,8 +249,144 @@
     });
     html += "</ul></div>";
 
+    html +=
+      '<div class="section" id="pattern-csv-analysis-wrap">' +
+      "<h2>E001 CSV AI 분석 시연</h2>" +
+      '<p class="muted">아래는 합성 CSV 규칙 분석입니다. 위 시연 저장소 데이터와 별개입니다. ' +
+      '<a href="' +
+      Common.appPath("dataset.html") +
+      '">CSV 시연</a>에서 전체 데이터를 볼 수 있습니다.</p>' +
+      '<div id="pattern-csv-analysis-mount" aria-live="polite"></div>' +
+      "</div>";
+
     root.innerHTML = html;
     bindFilters();
+    loadPatternCsvAnalysis();
+  }
+
+  /**
+   * CSV 규칙 분석 섹션 로드
+   */
+  function loadPatternCsvAnalysis() {
+    var mount = document.getElementById("pattern-csv-analysis-mount");
+    if (!mount) {
+      return;
+    }
+    function renderFromRows(rows) {
+      var dates = [];
+      rows.forEach(function (r) {
+        if (dates.indexOf(r.dateKey) < 0) {
+          dates.push(r.dateKey);
+        }
+      });
+      dates.sort();
+      PatternAnalysis.clearCache();
+      var analysis = PatternAnalysis.runFullAnalysis(rows, {
+        learnStart: PatternAnalysis.DEFAULT_LEARN_START,
+        learnEnd: csvAnalysisOpts.learnEnd,
+        analyzeDate: csvAnalysisOpts.analyzeDate,
+        noCache: true,
+      });
+      PatternAnalysisUI.markPatternAnalysisActive();
+      mount.innerHTML = PatternAnalysisUI.renderAnalysisPanel(analysis, {
+        dates: dates,
+        learnEnd: csvAnalysisOpts.learnEnd,
+        analyzeDate: csvAnalysisOpts.analyzeDate,
+        showControls: true,
+      });
+      bindPatternAnalysisControls(rows, dates);
+    }
+
+    if (window.location.protocol === "file:") {
+      mount.innerHTML =
+        '<p class="dataset-status">file://에서는 CSV를 직접 선택하거나 ' +
+        '<a href="' +
+        Common.appPath("dataset.html") +
+        '">CSV 시연</a> 화면을 이용하세요.</p>' +
+        '<label class="dataset-file-label">02_demo_synthetic.csv' +
+        '<input type="file" id="pattern-csv-file" accept=".csv,text/csv" /></label>' +
+        '<button type="button" class="btn btn--small" id="pattern-csv-load">로드 후 분석</button>';
+      var btn = document.getElementById("pattern-csv-load");
+      if (btn) {
+        btn.addEventListener("click", function () {
+          var input = document.getElementById("pattern-csv-file");
+          if (!input || !input.files || !input.files[0]) {
+            alert("CSV 파일을 선택해 주세요.");
+            return;
+          }
+          Dataset.readFileAsText(input.files[0])
+            .then(function (text) {
+              var parsed = Dataset.parseDemoCsv(text);
+              if (!parsed.schemaOk) {
+                throw new Error(parsed.schemaMessage);
+              }
+              renderFromRows(parsed.rows);
+            })
+            .catch(function (err) {
+              mount.innerHTML =
+                '<p class="dataset-status">로드 실패: ' +
+                Common.escapeHtml(err.message || String(err)) +
+                "</p>";
+            });
+        });
+      }
+      return;
+    }
+
+    mount.innerHTML = '<p class="muted">합성 CSV를 불러오는 중…</p>';
+    Dataset.fetchDefaultBundle(Common)
+      .then(function (bundle) {
+        if (!bundle.schemaOk) {
+          throw new Error(bundle.schemaMessage);
+        }
+        renderFromRows(bundle.rows);
+      })
+      .catch(function (err) {
+        mount.innerHTML =
+          '<p class="dataset-status">자동 로드 실패: ' +
+          Common.escapeHtml(err.message || String(err)) +
+          ' — <a href="' +
+          Common.appPath("dataset.html") +
+          '">CSV 시연</a></p>';
+      });
+  }
+
+  /**
+   * CSV 분석 컨트롤 바인딩
+   * @param {Object[]} rows
+   * @param {string[]} dates
+   */
+  function bindPatternAnalysisControls(rows, dates) {
+    var refreshBtn = document.getElementById("analysis-refresh");
+    var learnEndInput = document.getElementById("analysis-learn-end");
+    var analyzeSelect = document.getElementById("analysis-analyze-date");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", function () {
+        if (learnEndInput) {
+          csvAnalysisOpts.learnEnd = learnEndInput.value || csvAnalysisOpts.learnEnd;
+        }
+        if (analyzeSelect) {
+          csvAnalysisOpts.analyzeDate = analyzeSelect.value || csvAnalysisOpts.analyzeDate;
+        }
+        PatternAnalysis.clearCache();
+        var analysis = PatternAnalysis.runFullAnalysis(rows, {
+          learnStart: PatternAnalysis.DEFAULT_LEARN_START,
+          learnEnd: csvAnalysisOpts.learnEnd,
+          analyzeDate: csvAnalysisOpts.analyzeDate,
+          noCache: true,
+        });
+        var mount = document.getElementById("pattern-csv-analysis-mount");
+        if (mount) {
+          mount.innerHTML = PatternAnalysisUI.renderAnalysisPanel(analysis, {
+            dates: dates,
+            learnEnd: csvAnalysisOpts.learnEnd,
+            analyzeDate: csvAnalysisOpts.analyzeDate,
+            showControls: true,
+          });
+          bindPatternAnalysisControls(rows, dates);
+        }
+      });
+    }
   }
 
   /**

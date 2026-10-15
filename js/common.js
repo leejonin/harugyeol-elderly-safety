@@ -6,6 +6,7 @@
   "use strict";
 
   var SESSION_KEY = "harugyeol_session";
+  var PATTERN_ANALYSIS_SESSION_KEY = "harugyeol_pattern_analysis_active";
 
   /**
    * GitHub Pages 등 하위 경로에서도 동작하도록 상대 경로를 만듭니다.
@@ -191,11 +192,45 @@
    * @returns {string}
    */
   function renderDemoBanner() {
+    var extra = "";
+    if (isPatternAnalysisAvailable()) {
+      extra =
+        " CSV 규칙 시연 분석이 활성화된 화면입니다(실제 센서·클라우드 AI 학습 모델 아님).";
+    }
     return (
       '<div class="demo-banner" role="note">' +
       "시연 화면입니다. 표시 데이터는 예시이며, 센서·AI·스피커·외부 알림은 실제 연동되지 않았습니다." +
+      extra +
       "</div>"
     );
+  }
+
+  /**
+   * CSV 규칙 분석 시연이 이 세션에서 활성화되었는지 확인합니다.
+   * @returns {boolean}
+   */
+  function isPatternAnalysisAvailable() {
+    try {
+      return global.sessionStorage.getItem(PATTERN_ANALYSIS_SESSION_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * CSV 규칙 분석 연동 플래그를 설정합니다.
+   * @param {boolean} active
+   */
+  function setPatternAnalysisActive(active) {
+    try {
+      if (active) {
+        global.sessionStorage.setItem(PATTERN_ANALYSIS_SESSION_KEY, "1");
+      } else {
+        global.sessionStorage.removeItem(PATTERN_ANALYSIS_SESSION_KEY);
+      }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   /**
@@ -222,7 +257,7 @@
   function renderIntegrationTags() {
     var items = [
       { name: "센서", on: false },
-      { name: "AI 분석", on: false },
+      { name: "AI 분석(규칙·CSV)", on: isPatternAnalysisAvailable() },
       { name: "스피커", on: false },
       { name: "외부 알림", on: false },
       { name: "AI 대화(GPT)", on: isGptChatConfigured() },
@@ -462,6 +497,8 @@
     clearSession: clearSession,
     requireAuth: requireAuth,
     renderDemoBanner: renderDemoBanner,
+    isPatternAnalysisAvailable: isPatternAnalysisAvailable,
+    setPatternAnalysisActive: setPatternAnalysisActive,
     renderIntegrationTags: renderIntegrationTags,
     renderHeader: renderHeader,
     getAccessibleElderIds: getAccessibleElderIds,

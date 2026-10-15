@@ -6,6 +6,8 @@
 
   var Common = window.Harugyeol.Common;
   var Dataset = window.Harugyeol.Dataset;
+  var PatternAnalysis = window.Harugyeol.PatternAnalysis;
+  var PatternAnalysisUI = window.Harugyeol.PatternAnalysisUI;
 
   var session = Common.requireAuth();
   if (!session) {
@@ -28,6 +30,8 @@
     filters: { dateKey: "all", scenario: "all", anomaly: "all" },
     page: 1,
     pageSize: 100,
+    analysisLearnEnd: PatternAnalysis.DEFAULT_LEARN_END,
+    analysisDate: "2026-10-14",
   };
 
   var TABLE_COLUMNS = [
@@ -53,6 +57,49 @@
    */
   function getFilteredRows() {
     return Dataset.filterRows(state.allRows, state.filters);
+  }
+
+  /**
+   * CSV에 포함된 날짜 목록
+   * @returns {string[]}
+   */
+  function listDateKeys() {
+    var keys = {};
+    state.allRows.forEach(function (row) {
+      keys[row.dateKey] = true;
+    });
+    return Object.keys(keys).sort();
+  }
+
+  /**
+   * 규칙 분석 결과 HTML
+   * @returns {string}
+   */
+  function buildAnalysisSection() {
+    if (!state.allRows.length) {
+      return "";
+    }
+    var dates = listDateKeys();
+    if (dates.indexOf(state.analysisDate) < 0) {
+      state.analysisDate = dates[dates.length - 1];
+    }
+    PatternAnalysis.clearCache();
+    var analysis = PatternAnalysis.runFullAnalysis(state.allRows, {
+      learnStart: PatternAnalysis.DEFAULT_LEARN_START,
+      learnEnd: state.analysisLearnEnd,
+      analyzeDate: state.analysisDate,
+      noCache: true,
+    });
+    PatternAnalysisUI.markPatternAnalysisActive();
+    if (integrationMount) {
+      integrationMount.innerHTML = Common.renderIntegrationTags();
+    }
+    return PatternAnalysisUI.renderAnalysisPanel(analysis, {
+      dates: dates,
+      learnEnd: state.analysisLearnEnd,
+      analyzeDate: state.analysisDate,
+      showControls: true,
+    });
   }
 
   /**
@@ -617,6 +664,7 @@
       "</div>" +
       buildSummaryHtml(summary) +
       buildFiltersHtml(summary) +
+      buildAnalysisSection() +
       '<section class="section dataset-chart-card">' +
       '<h2 class="dataset-section-title">전력·온습도 추이 (필터 적용)</h2>' +
       '<div class="dataset-canvas-wrap"><canvas id="chart-trend" class="dataset-canvas" aria-label="전력 온도 습도 추이"></canvas></div>' +
@@ -689,6 +737,25 @@
       next.addEventListener("click", function () {
         state.page++;
         renderMain();
+      });
+    }
+    var learnEndInput = document.getElementById("analysis-learn-end");
+    var analyzeSelect = document.getElementById("analysis-analyze-date");
+    var refreshBtn = document.getElementById("analysis-refresh");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", function () {
+        if (learnEndInput) {
+          state.analysisLearnEnd = learnEndInput.value || state.analysisLearnEnd;
+        }
+        if (analyzeSelect) {
+          state.analysisDate = analyzeSelect.value || state.analysisDate;
+        }
+        renderMain();
+      });
+    }
+    if (analyzeSelect) {
+      analyzeSelect.addEventListener("change", function () {
+        state.analysisDate = analyzeSelect.value;
       });
     }
   }

@@ -1329,3 +1329,73 @@ a:hover {
     height: 160px;
   }
 }
+
+/* CSV 규칙 AI 분석 (4.x 시연) */
+.analysis-panel-note {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.analysis-meta {
+  font-size: 0.88rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.analysis-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.analysis-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+}
+
+.analysis-controls input,
+.analysis-controls select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.analysis-status {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.analysis-status--ok {
+  background: #e8f5e9;
+  color: #1b4332;
+}
+
+.analysis-status--watch {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.analysis-status--alert {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.analysis-compare-table th,
+.analysis-compare-table td {
+  vertical-align: top;
+}
+
+.analysis-label-compare {
+  font-size: 0.88rem;
+}
+
+.analysis-baseline-svg {
+  max-width: 100%;
+  margin-bottom: 0.75rem;
+}
