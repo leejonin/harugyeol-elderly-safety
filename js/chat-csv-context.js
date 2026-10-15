@@ -206,7 +206,39 @@
   }
 
   /**
-   * 사용자 메시지에서 YYYY-MM-DD 날짜 추출
+   * 메시지에 날짜 표현이 포함됐는지 (한글·ISO)
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function messageMentionsDate(text) {
+    if (!text) {
+      return false;
+    }
+    return /(\d{1,2}\s*월\s*\d+\s*일|20\d{2}-\d{2}-\d{2})/.test(String(text));
+  }
+
+  /**
+   * YYYY-MM-DD 달력상 유효 여부
+   * @param {string} dateKey
+   * @returns {boolean}
+   */
+  function isValidCalendarDateKey(dateKey) {
+    var p = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!p) {
+      return false;
+    }
+    var y = parseInt(p[1], 10);
+    var m = parseInt(p[2], 10);
+    var d = parseInt(p[3], 10);
+    if (m < 1 || m > 12 || d < 1 || d > 31) {
+      return false;
+    }
+    var dt = new Date(y, m - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  }
+
+  /**
+   * 사용자 메시지에서 YYYY-MM-DD 날짜 추출 (유효하지 않으면 null)
    * @param {string} text
    * @param {{ min: string, max: string }|null} [dateRange]
    * @returns {string|null}
@@ -217,19 +249,102 @@
     }
     var iso = text.match(/(20\d{2})-(\d{2})-(\d{2})/);
     if (iso) {
-      return iso[1] + "-" + iso[2] + "-" + iso[3];
+      var isoKey = iso[1] + "-" + iso[2] + "-" + iso[3];
+      return isValidCalendarDateKey(isoKey) ? isoKey : null;
     }
-    var kr = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    var kr = text.match(/(\d{1,2})\s*월\s*(\d{1,3})\s*일/);
     if (kr) {
+      var monthNum = parseInt(kr[1], 10);
+      var dayNum = parseInt(kr[2], 10);
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null;
+      }
       var year = DEFAULT_REPORT_YEAR;
       if (dateRange && dateRange.min) {
         year = parseInt(dateRange.min.slice(0, 4), 10);
       }
-      var mm = String(kr[1]).padStart(2, "0");
-      var dd = String(kr[2]).padStart(2, "0");
-      return year + "-" + mm + "-" + dd;
+      var mm = String(monthNum).padStart(2, "0");
+      var dd = String(dayNum).padStart(2, "0");
+      var krKey = year + "-" + mm + "-" + dd;
+      return isValidCalendarDateKey(krKey) ? krKey : null;
     }
     return null;
+  }
+
+  /**
+   * 보고서에 쓸 날짜 결정 (잘못된 날짜·범위 밖이면 오류)
+   * @param {string} userText
+   * @param {Object|null} snapshot
+   * @param {Object[]} rows
+   * @returns {{ ok: true, dateKey: string }|{ ok: false, message: string }}
+   */
+  function resolveReportDateKey(userText, snapshot, rows) {
+    var range =
+      (snapshot && snapshot.dateRange) ||
+      (rows && rows.length ? dateRangeOf(rows) : null);
+    var rangeHint = range
+      ? range.min + " ~ " + range.max
+      : "2026-10-01 ~ 2026-10-14";
+    var mentioned = messageMentionsDate(userText);
+    var dateKey = parseDateFromMessage(
+      userText,
+      range || (snapshot && snapshot.dateRange) || null
+    );
+
+    if (mentioned && !dateKey) {
+      return {
+        ok: false,
+        message:
+          "입력하신 날짜를 이해하지 못했거나 없는 날짜입니다. (예: 「12월 311일」은 잘못된 날짜입니다.) CSV 시연 기간은 " +
+          rangeHint +
+          " 입니다. 예: 「10월 11일 생활패턴 분석 보고서」",
+      };
+    }
+
+    if (!dateKey) {
+      if (snapshot && snapshot.analyzeDate) {
+        dateKey = snapshot.analyzeDate;
+      } else if (range && range.max) {
+        dateKey = range.max;
+      } else {
+        return {
+          ok: false,
+          message:
+            "보고서 날짜를 알려 주세요. CSV 시연 기간 " +
+            rangeHint +
+            " 안의 날짜로 요청해 주세요.",
+        };
+      }
+    }
+
+    if (range && (dateKey < range.min || dateKey > range.max)) {
+      return {
+        ok: false,
+        message:
+          dateKey +
+          " 은(는) CSV 시연 데이터에 없습니다. 사용 가능 기간: " +
+          rangeHint +
+          " (예: 10월 4일, 10월 11일)",
+      };
+    }
+
+    if (rows && rows.length) {
+      var hasDay = rows.some(function (r) {
+        return r.dateKey === dateKey;
+      });
+      if (!hasDay) {
+        return {
+          ok: false,
+          message:
+            dateKey +
+            " 날짜 행이 CSV에 없습니다. 시연 기간 " +
+            rangeHint +
+            " 중 하루를 지정해 주세요.",
+        };
+      }
+    }
+
+    return { ok: true, dateKey: dateKey };
   }
 
   /**
@@ -527,7 +642,9 @@
     isDailyReportRequest: isDailyReportRequest,
     isShortAffirmation: isShortAffirmation,
     resolveReportIntent: resolveReportIntent,
+    messageMentionsDate: messageMentionsDate,
     parseDateFromMessage: parseDateFromMessage,
+    resolveReportDateKey: resolveReportDateKey,
     buildDailyReport: buildDailyReport,
     ensureRows: ensureRows,
     refreshFromNetwork: refreshFromNetwork,

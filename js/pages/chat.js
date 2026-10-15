@@ -631,16 +631,22 @@
       ChatCsvContext.ensureRows(Common)
         .then(function (rows) {
           var snap = ChatCsvContext.getSnapshot();
-          var dateKey = ChatCsvContext.parseDateFromMessage(
+          var resolved = ChatCsvContext.resolveReportDateKey(
             userText,
-            snap ? snap.dateRange : null
+            snap,
+            rows
           );
-          if (!dateKey && snap && snap.analyzeDate) {
-            dateKey = snap.analyzeDate;
+          if (!resolved.ok) {
+            var failThread = loadThread(elderId);
+            failThread.messages.push({
+              role: "assistant",
+              content: resolved.message,
+            });
+            saveThread(elderId, failThread);
+            render(elderId);
+            return;
           }
-          if (!dateKey) {
-            dateKey = "2026-10-04";
-          }
+          var dateKey = resolved.dateKey;
           var report = ChatCsvContext.buildDailyReport(rows, dateKey, {
             elderLabel: elder ? elder.name : "",
             learnEnd: snap && snap.learnEnd ? snap.learnEnd : undefined,
