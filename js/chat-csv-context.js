@@ -6,6 +6,9 @@
   "use strict";
 
   var STORAGE_KEY = "harugyeol_csv_chat_snapshot_v1";
+  var DEFAULT_REPORT_YEAR = 2026;
+  /** @type {Object[]|null} */
+  var cachedRows = null;
 
   /**
    * 시나리오별 행 수 집계
@@ -111,12 +114,224 @@
       analysis: compactAnalysis(analysis),
     };
 
+    cachedRows = rows;
     try {
       global.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     } catch (e) {
       /* ignore quota */
     }
     return snapshot;
+  }
+
+  /**
+   * 메모리에 캐시된 CSV 행
+   * @returns {Object[]|null}
+   */
+  function getCachedRows() {
+    return cachedRows;
+  }
+
+  /**
+   * CSV 행 캐시 설정
+   * @param {Object[]|null} rows
+   */
+  function setCachedRows(rows) {
+    cachedRows = rows && rows.length ? rows : null;
+  }
+
+  /**
+   * 보고서·리포트 요청 문구인지 판별합니다.
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function isDailyReportRequest(text) {
+    if (!text) {
+      return false;
+    }
+    if (/보고서|리포트|report/i.test(text)) {
+      return true;
+    }
+    if (/제출/.test(text) && /(\d{1,2}\s*월\s*\d{1,2}\s*일|20\d{2}-\d{2}-\d{2})/.test(text)) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 사용자 메시지에서 YYYY-MM-DD 날짜 추출
+   * @param {string} text
+   * @param {{ min: string, max: string }|null} [dateRange]
+   * @returns {string|null}
+   */
+  function parseDateFromMessage(text, dateRange) {
+    if (!text) {
+      return null;
+    }
+    var iso = text.match(/(20\d{2})-(\d{2})-(\d{2})/);
+    if (iso) {
+      return iso[1] + "-" + iso[2] + "-" + iso[3];
+    }
+    var kr = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (kr) {
+      var year = DEFAULT_REPORT_YEAR;
+      if (dateRange && dateRange.min) {
+        year = parseInt(dateRange.min.slice(0, 4), 10);
+      }
+      var mm = String(kr[1]).padStart(2, "0");
+      var dd = String(kr[2]).padStart(2, "0");
+      return year + "-" + mm + "-" + dd;
+    }
+    return null;
+  }
+
+  /**
+   * 해당 날짜 행 통계
+   * @param {Object[]} dayRows
+   * @returns {Object}
+   */
+  function dayStats(dayRows) {
+    var motionOn = 0;
+    var doorOpen = 0;
+    var gasAlert = 0;
+    var powerSum = 0;
+    var scenarios = {};
+    var anomaly = 0;
+    dayRows.forEach(function (r) {
+      if (r.motion === 1) {
+        motionOn++;
+      }
+      if (r.doorOpen === 1) {
+        doorOpen++;
+      }
+      if (r.gasAlert === 1) {
+        gasAlert++;
+      }
+      powerSum += r.powerW;
+      scenarios[r.scenario] = (scenarios[r.scenario] || 0) + 1;
+      if (r.anomalyLabel === 1) {
+        anomaly++;
+      }
+    });
+    var n = dayRows.length || 1;
+    return {
+      rowCount: dayRows.length,
+      motionOn: motionOn,
+      motionRatio: motionOn / n,
+      doorOpen: doorOpen,
+      gasAlert: gasAlert,
+      avgPowerW: powerSum / n,
+      scenarios: scenarios,
+      anomalyLabelCount: anomaly,
+    };
+  }
+
+  /**
+   * 일별 CSV 시연 보고서(마크다운) 생성
+   * @param {Object[]} rows
+   * @param {string} dateKey
+   * @param {Object} [options]
+   * @param {string} [options.elderLabel] - 화면 표시용 이름
+   * @param {string} [options.learnEnd]
+   * @returns {{ dateKey: string, markdown: string, summaryText: string, filename: string }}
+   */
+  function buildDailyReport(rows, dateKey, options) {
+    options = options || {};
+    var PatternAnalysis = global.Harugyeol.PatternAnalysis;
+    var learnEnd =
+      options.learnEnd ||
+      (PatternAnalysis ? PatternAnalysis.DEFAULT_LEARN_END : "2026-10-07");
+    var dayRows = rows.filter(function (r) {
+      return r.dateKey === dateKey;
+    });
+    if (!dayRows.length) {
+      throw new Error(dateKey + " 날짜 데이터가 CSV에 없습니다.");
+    }
+    var stats = dayStats(dayRows);
+    var analysis = null;
+    if (PatternAnalysis) {
+      PatternAnalysis.clearCache();
+      analysis = PatternAnalysis.runFullAnalysis(rows, {
+        learnStart: PatternAnalysis.DEFAULT_LEARN_START,
+        learnEnd: learnEnd,
+        analyzeDate: dateKey,
+        noCache: true,
+      });
+    }
+    var elderId = dayRows[0].elderId || "E001";
+    var elderLabel = options.elderLabel || elderId;
+    var lines = [];
+    lines.push("# 하루결 CSV 시연 일별 보고서");
+    lines.push("");
+    lines.push("- 문서 성격: **합성(synthetic) 시연 데이터** — 실제 어르신 기록·의료 검증 아님");
+    lines.push("- 생성 시각: " + new Date().toLocaleString("ko-KR"));
+    lines.push("- 분석 대상일: **" + dateKey + "**");
+    lines.push("- CSV 대상 ID: **" + elderId + "** (화면 선택 어르신: " + elderLabel + ")");
+    lines.push("- 데이터 출처: " + (dayRows[0].dataOrigin || "synthetic"));
+    lines.push("- 해당일 기록: " + stats.rowCount + "행 (10분 간격)");
+    lines.push("");
+    lines.push("## 1. 해당일 생활 신호 요약");
+    lines.push("- 움직임 감지: " + stats.motionOn + "회 (비율 " + (stats.motionRatio * 100).toFixed(1) + "%)");
+    lines.push("- 문 열림: " + stats.doorOpen + "회");
+    lines.push("- 평균 전력: " + stats.avgPowerW.toFixed(1) + " W");
+    lines.push("- 가스 경보(시연): " + stats.gasAlert + "회");
+    lines.push("- 합성 anomaly_label=1: " + stats.anomalyLabelCount + "건");
+    lines.push("- 시나리오: " + Object.keys(stats.scenarios).map(function (k) {
+      return k + " " + stats.scenarios[k] + "행";
+    }).join(", "));
+    lines.push("");
+    if (analysis) {
+      var c = analysis.composite;
+      var d = analysis.dayResult;
+      lines.push("## 2. 규칙 기반 생활패턴 분석 (시연)");
+      lines.push("- 학습 구간: " + analysis.baseline.learnStart + " ~ " + analysis.baseline.learnEnd);
+      lines.push("- 분석 준비: " + analysis.baseline.analysisReady);
+      lines.push("- 복합 판단: **" + c.summaryStatus + "**");
+      if (c.reasons && c.reasons.length) {
+        lines.push("- 판단 근거:");
+        c.reasons.forEach(function (r) {
+          lines.push("  - " + r);
+        });
+      }
+      lines.push("- 가전(4.2.1): " + d.plug.status + " — " + d.plug.message);
+      lines.push("- 활동(4.2.2): " + d.motion.status + " — " + d.motion.message);
+      lines.push("- 문(4.2.3): " + d.door.status + " — " + d.door.message);
+      lines.push("- 데이터셋 참고 시나리오: " + analysis.datasetMeta.primaryScenario);
+      lines.push("");
+      lines.push("> " + c.note);
+    }
+    lines.push("");
+    lines.push("## 3. 안내");
+    lines.push("- 본 보고서는 GitHub Pages·CSV 시연 패키지 기반 **규칙 엔진** 결과입니다.");
+    lines.push("- 센서 실연동·클라우드 ML 학습·공식 제출 문서가 아닙니다.");
+    var markdown = lines.join("\n");
+    var summaryText =
+      dateKey +
+      " CSV 시연 일별 보고서를 작성했습니다. (합성 데이터·규칙 분석) 아래에서 **미리보기**와 **다운로드**를 이용하세요.";
+    return {
+      dateKey: dateKey,
+      markdown: markdown,
+      summaryText: summaryText,
+      filename: "harugyeol-csv-report-" + dateKey + ".md",
+    };
+  }
+
+  /**
+   * CSV 행을 확보합니다 (캐시 또는 네트워크).
+   * @param {Object} common
+   * @returns {Promise<Object[]>}
+   */
+  function ensureRows(common) {
+    if (cachedRows && cachedRows.length) {
+      return Promise.resolve(cachedRows);
+    }
+    return refreshFromNetwork(common).then(function () {
+      if (cachedRows && cachedRows.length) {
+        return cachedRows;
+      }
+      throw new Error(
+        "CSV 데이터가 없습니다. 설정에서 「CSV 참고 갱신」을 누르거나 CSV 시연 화면을 먼저 열어 주세요."
+      );
+    });
   }
 
   /**
@@ -238,6 +453,7 @@
       if (!bundle.schemaOk) {
         throw new Error(bundle.schemaMessage || "CSV 스키마 오류");
       }
+      setCachedRows(bundle.rows);
       return persistFromRows(bundle.rows, {
         source: "chat_fetch",
         analyzeDate: "2026-10-14",
@@ -249,9 +465,15 @@
   global.Harugyeol.ChatCsvContext = {
     STORAGE_KEY: STORAGE_KEY,
     persistFromRows: persistFromRows,
+    getCachedRows: getCachedRows,
+    setCachedRows: setCachedRows,
     getSnapshot: getSnapshot,
     hasSnapshot: hasSnapshot,
     buildHintsText: buildHintsText,
+    isDailyReportRequest: isDailyReportRequest,
+    parseDateFromMessage: parseDateFromMessage,
+    buildDailyReport: buildDailyReport,
+    ensureRows: ensureRows,
     refreshFromNetwork: refreshFromNetwork,
   };
 })(window);

@@ -259,8 +259,58 @@
   }
 
   /**
+   * 마크다운 보고서 파일 다운로드
+   * @param {string} filename
+   * @param {string} markdown
+   */
+  function downloadMarkdownFile(filename, markdown) {
+    var blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "harugyeol-report.md";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * 보고서 미리보기·다운로드 UI
+   * @param {{ report?: { dateKey: string, filename?: string } }} m
+   * @param {number} messageIndex
+   * @returns {string}
+   */
+  function reportAttachmentHtml(m, messageIndex) {
+    if (!m.report || !m.report.markdown) {
+      return "";
+    }
+    var preview =
+      '<details class="chat-report-preview">' +
+      '<summary>문서 미리보기 (' +
+      Common.escapeHtml(m.report.dateKey || "") +
+      ")</summary>" +
+      '<pre class="chat-report-preview__body">' +
+      Common.escapeHtml(m.report.markdown) +
+      "</pre></details>";
+    return (
+      '<div class="chat-report-attachment">' +
+      preview +
+      '<div class="gpt-msg__tools gpt-msg__tools--report">' +
+      '<button type="button" class="gpt-msg-tts" data-message-index="' +
+      messageIndex +
+      '" aria-label="이 답변 읽기">🔊 읽기</button>' +
+      '<button type="button" class="gpt-msg-report-download" data-message-index="' +
+      messageIndex +
+      '" aria-label="보고서 다운로드">⬇ 다운로드 (.md)</button>' +
+      "</div></div>"
+    );
+  }
+
+  /**
    * 메시지 한 줄 HTML (GPT 스타일)
-   * @param {{ role: string, content: string, pending?: boolean }} m
+   * @param {{ role: string, content: string, pending?: boolean, report?: Object }} m
    * @param {number} [messageIndex] - 저장된 대화 내 메시지 위치
    * @returns {string}
    */
@@ -272,12 +322,18 @@
     }
     var avatar = isUser ? "나" : "하";
     var label = isUser ? "나" : "하루결 도우미";
-    var ttsButton =
-      !isUser && !m.pending && typeof messageIndex === "number"
-        ? '<div class="gpt-msg__tools"><button type="button" class="gpt-msg-tts" data-message-index="' +
-          messageIndex +
-          '" aria-label="이 답변 읽기">🔊 읽기</button></div>'
-        : "";
+    var toolsHtml = "";
+    if (!isUser && !m.pending && typeof messageIndex === "number") {
+      toolsHtml =
+        '<div class="gpt-msg__tools">' +
+        '<button type="button" class="gpt-msg-tts" data-message-index="' +
+        messageIndex +
+        '" aria-label="이 답변 읽기">🔊 읽기</button>' +
+        "</div>";
+      if (m.report && m.report.markdown) {
+        toolsHtml = reportAttachmentHtml(m, messageIndex);
+      }
+    }
     return (
       '<div class="' +
       cls +
@@ -292,9 +348,38 @@
       '<div class="gpt-msg__text">' +
       Common.escapeHtml(m.content) +
       "</div>" +
-      ttsButton +
+      toolsHtml +
       "</div></div>"
     );
+  }
+
+  /**
+   * 대화 스레드에서 보고서·TTS 버튼 이벤트 연결
+   * @param {HTMLElement} root
+   * @param {{ messages: Array }} thread
+   */
+  function bindMessageToolButtons(root, thread) {
+    root.querySelectorAll(".gpt-msg-tts").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var index = Number(button.getAttribute("data-message-index"));
+        var message = thread.messages[index];
+        if (message && message.role === "assistant") {
+          speakText(message.content);
+        }
+      });
+    });
+    root.querySelectorAll(".gpt-msg-report-download").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var index = Number(button.getAttribute("data-message-index"));
+        var message = thread.messages[index];
+        if (message && message.report && message.report.markdown) {
+          downloadMarkdownFile(
+            message.report.filename || "harugyeol-report.md",
+            message.report.markdown
+          );
+        }
+      });
+    });
   }
 
   /**
@@ -486,15 +571,7 @@
       stopTtsButton.addEventListener("click", stopSpeech);
     }
 
-    root.querySelectorAll(".gpt-msg-tts").forEach(function (button) {
-      button.addEventListener("click", function () {
-        var index = Number(button.getAttribute("data-message-index"));
-        var message = thread.messages[index];
-        if (message && message.role === "assistant") {
-          speakText(message.content);
-        }
-      });
-    });
+    bindMessageToolButtons(root, thread);
 
     document.getElementById("btn-save-key").addEventListener("click", function () {
       var key = sanitizeApiKeyInput(apiKeyInput.value.trim());
@@ -532,6 +609,65 @@
     /**
      * @param {boolean} summaryMode
      */
+    /**
+     * CSV 시연 일별 보고서 생성 (LLM 없이)
+     * @param {string} userText
+     */
+    function sendDailyReportRequest(userText) {
+      var inner = document.querySelector(".gpt-chat-thread__inner");
+      if (inner) {
+        inner.insertAdjacentHTML(
+          "beforeend",
+          messageRowHtml({
+            role: "assistant",
+            content: "보고서를 작성하고 있습니다…",
+            pending: true,
+          })
+        );
+        scrollChatToBottom();
+      }
+      ChatCsvContext.ensureRows(Common)
+        .then(function (rows) {
+          var snap = ChatCsvContext.getSnapshot();
+          var dateKey = ChatCsvContext.parseDateFromMessage(
+            userText,
+            snap ? snap.dateRange : null
+          );
+          if (!dateKey && snap && snap.analyzeDate) {
+            dateKey = snap.analyzeDate;
+          }
+          if (!dateKey) {
+            dateKey = "2026-10-04";
+          }
+          var report = ChatCsvContext.buildDailyReport(rows, dateKey, {
+            elderLabel: elder ? elder.name : "",
+            learnEnd: snap && snap.learnEnd ? snap.learnEnd : undefined,
+          });
+          var updated = loadThread(elderId);
+          updated.messages.push({
+            role: "assistant",
+            content: report.summaryText,
+            report: {
+              dateKey: report.dateKey,
+              markdown: report.markdown,
+              filename: report.filename,
+            },
+          });
+          saveThread(elderId, updated);
+          render(elderId);
+          if (isTtsEnabled()) {
+            speakText(report.summaryText);
+          }
+        })
+        .catch(function (err) {
+          render(elderId);
+          alert(
+            err.message ||
+              "보고서를 만들 수 없습니다. CSV 시연 화면을 연 뒤 다시 시도해 주세요."
+          );
+        });
+    }
+
     function sendMessage(summaryMode) {
       var input = document.getElementById("chat-input");
       var text = summaryMode
@@ -546,6 +682,15 @@
       saveThread(elderId, threadNow);
       input.value = "";
       render(elderId);
+
+      if (
+        !summaryMode &&
+        ChatCsvContext &&
+        ChatCsvContext.isDailyReportRequest(text)
+      ) {
+        sendDailyReportRequest(text);
+        return;
+      }
 
       var inner = document.querySelector(".gpt-chat-thread__inner");
       if (inner) {
