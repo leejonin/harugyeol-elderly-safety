@@ -148,13 +148,61 @@
     if (!text) {
       return false;
     }
-    if (/보고서|리포트|report/i.test(text)) {
+    var t = String(text).trim();
+    if (/보고서|리포트|report/i.test(t)) {
       return true;
     }
-    if (/제출/.test(text) && /(\d{1,2}\s*월\s*\d{1,2}\s*일|20\d{2}-\d{2}-\d{2})/.test(text)) {
+    if (/생활\s*패턴\s*분석|패턴\s*분석\s*보고|분석\s*보고서/i.test(t)) {
+      return true;
+    }
+    if (
+      /(\d{1,2}\s*월\s*\d{1,2}\s*일|20\d{2}-\d{2}-\d{2})/.test(t) &&
+      /(제출|생활\s*패턴|패턴\s*분석|분석\s*(해|줘|부탁|출력))/i.test(t)
+    ) {
+      return true;
+    }
+    if (/제출/.test(t) && /(\d{1,2}\s*월\s*\d{1,2}\s*일|20\d{2}-\d{2}-\d{2})/.test(t)) {
       return true;
     }
     return false;
+  }
+
+  /**
+   * 짧은 긍정·확인 응답인지 (직전 보고서 요청 이어가기)
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function isShortAffirmation(text) {
+    if (!text) {
+      return false;
+    }
+    var t = String(text).trim();
+    if (t.length > 12) {
+      return false;
+    }
+    return /^(네+|ㅇㅇ+|응+|yes|ok|okay|좋아|그래|맞아|해줘|부탁|진행|알겠)$/i.test(t);
+  }
+
+  /**
+   * 보고서 생성을 처리할지, 어떤 문장에서 날짜를 뽑을지 결정
+   * @param {string} text - 방금 보낸 사용자 메시지
+   * @param {Array<{role: string, content: string}>} priorMessages - 그 이전 대화
+   * @returns {{ shouldHandle: boolean, sourceText: string }}
+   */
+  function resolveReportIntent(text, priorMessages) {
+    var current = String(text || "").trim();
+    if (isDailyReportRequest(current)) {
+      return { shouldHandle: true, sourceText: current };
+    }
+    if (isShortAffirmation(current) && priorMessages && priorMessages.length) {
+      for (var i = priorMessages.length - 1; i >= 0; i--) {
+        var m = priorMessages[i];
+        if (m.role === "user" && isDailyReportRequest(m.content)) {
+          return { shouldHandle: true, sourceText: m.content };
+        }
+      }
+    }
+    return { shouldHandle: false, sourceText: current };
   }
 
   /**
@@ -259,8 +307,14 @@
     }
     var elderId = dayRows[0].elderId || "E001";
     var elderLabel = options.elderLabel || elderId;
+    var userHint = options.userHint || "";
+    var title =
+      /생활\s*패턴|패턴\s*분석/i.test(userHint) ||
+      /생활\s*패턴|패턴\s*분석/i.test(options.reportTitleHint || "")
+        ? "하루결 CSV 시연 생활패턴 분석 보고서"
+        : "하루결 CSV 시연 일별 보고서";
     var lines = [];
-    lines.push("# 하루결 CSV 시연 일별 보고서");
+    lines.push("# " + title);
     lines.push("");
     lines.push("- 문서 성격: **합성(synthetic) 시연 데이터** — 실제 어르신 기록·의료 검증 아님");
     lines.push("- 생성 시각: " + new Date().toLocaleString("ko-KR"));
@@ -471,6 +525,8 @@
     hasSnapshot: hasSnapshot,
     buildHintsText: buildHintsText,
     isDailyReportRequest: isDailyReportRequest,
+    isShortAffirmation: isShortAffirmation,
+    resolveReportIntent: resolveReportIntent,
     parseDateFromMessage: parseDateFromMessage,
     buildDailyReport: buildDailyReport,
     ensureRows: ensureRows,

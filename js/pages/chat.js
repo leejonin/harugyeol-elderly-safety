@@ -507,6 +507,8 @@
       html += '<div class="gpt-chat-welcome__logo">하</div>';
       html += "<h2>하루결 AI 도우미</h2>";
       html += "<p>어르신과 편하게 대화하거나, 상태 요약을 요청할 수 있습니다.</p>";
+      html +=
+        '<p class="muted">예: 「10월 11일 생활패턴 분석 보고서」 — CSV 시연 보고서 미리보기·다운로드</p>';
       html += '<p class="muted">☰ 설정에서 GPT API 키를 입력하세요.</p>';
       if (ChatCsvContext && ChatCsvContext.hasSnapshot()) {
         html +=
@@ -642,6 +644,7 @@
           var report = ChatCsvContext.buildDailyReport(rows, dateKey, {
             elderLabel: elder ? elder.name : "",
             learnEnd: snap && snap.learnEnd ? snap.learnEnd : undefined,
+            userHint: userText,
           });
           var updated = loadThread(elderId);
           updated.messages.push({
@@ -660,11 +663,16 @@
           }
         })
         .catch(function (err) {
+          var updated = loadThread(elderId);
+          updated.messages.push({
+            role: "assistant",
+            content:
+              (err.message ||
+                "보고서를 만들 수 없습니다.") +
+              " CSV 시연(dataset) 화면을 한 번 연 뒤, 설정의 「CSV 참고 갱신」을 눌러 주세요.",
+          });
+          saveThread(elderId, updated);
           render(elderId);
-          alert(
-            err.message ||
-              "보고서를 만들 수 없습니다. CSV 시연 화면을 연 뒤 다시 시도해 주세요."
-          );
         });
     }
 
@@ -683,12 +691,15 @@
       input.value = "";
       render(elderId);
 
-      if (
-        !summaryMode &&
-        ChatCsvContext &&
-        ChatCsvContext.isDailyReportRequest(text)
-      ) {
-        sendDailyReportRequest(text);
+      var reportIntent =
+        !summaryMode && ChatCsvContext && ChatCsvContext.resolveReportIntent
+          ? ChatCsvContext.resolveReportIntent(
+              text,
+              threadNow.messages.slice(0, -1)
+            )
+          : { shouldHandle: false, sourceText: text };
+      if (reportIntent.shouldHandle) {
+        sendDailyReportRequest(reportIntent.sourceText);
         return;
       }
 

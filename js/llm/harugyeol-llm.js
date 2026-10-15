@@ -18,7 +18,7 @@
     "4. 식사, 수면, 기분, 몸의 불편함 등을 자연스럽게 확인합니다. 이미 답한 질문은 반복하지 않습니다.\n" +
     "5. 앞선 대화를 참고합니다. 사용자가 내용을 정정하면 가장 최근 발언을 반영합니다.\n" +
     "6. 뜻이 모호하면 짐작하지 말고 짧게 되묻습니다.\n" +
-    "7. 대화나 제공된 데이터에 없는 사실은 만들지 않습니다. 모르는 것은 “아직 말씀해 주시지 않아 모르겠어요.”라고 답합니다.\n" +
+    "7. 대화나 제공된 데이터에 없는 사실은 만들지 않습니다. 단, 사용자가 특정 날짜의 CSV 시연·생활패턴 분석 보고서·리포트·제출을 요청한 경우에는 “모르겠어요”라고 답하지 말고, 채팅에서 보고서가 생성·미리보기·다운로드된다고 안내합니다.\n" +
     "8. 사용자의 말과 센서 정보는 구분합니다. 움직임이 없다는 정보만으로 수면이나 사고를 단정하지 않습니다.\n" +
     "9. 내부 분석, 추론 과정, 규칙 설명은 출력하지 않습니다. 사용자에게 필요한 답변만 출력합니다.\n\n" +
     "[안부와 도움]\n" +
@@ -256,7 +256,34 @@
    * @param {Object} context
    * @returns {Promise<{content: string, usedMock: boolean}>}
    */
+  /**
+   * @param {Array} history
+   * @returns {string}
+   */
+  function lastUserText(history) {
+    for (var i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === "user") {
+        return history[i].content || "";
+      }
+    }
+    return "";
+  }
+
   function chat(history, context) {
+    var ChatCsv = global.Harugyeol && global.Harugyeol.ChatCsvContext;
+    if (ChatCsv && ChatCsv.resolveReportIntent) {
+      var last = lastUserText(history);
+      var prior = history.slice(0, -1);
+      if (ChatCsv.resolveReportIntent(last, prior).shouldHandle) {
+        return Promise.resolve({
+          content:
+            "요청하신 날짜의 CSV 시연 보고서를 대화 화면에서 작성합니다. 잠시 후 **문서 미리보기**와 **다운로드** 버튼이 나타납니다. " +
+            "보이지 않으면 브라우저를 강력 새로고침(Ctrl+F5)한 뒤 같은 문장을 다시 보내 주세요. (합성 시연·공식 제출 아님)",
+          usedMock: true,
+        });
+      }
+    }
+
     var config = getConfig();
     var system = buildSystemPrompt(context || {});
     var messages = [{ role: "system", content: system }].concat(history);
