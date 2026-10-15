@@ -288,6 +288,13 @@
         noCache: true,
       });
       PatternAnalysisUI.markPatternAnalysisActive();
+      if (window.Harugyeol.ChatCsvContext) {
+        window.Harugyeol.ChatCsvContext.persistFromRows(rows, {
+          source: "pattern",
+          analyzeDate: csvAnalysisOpts.analyzeDate,
+          learnEnd: csvAnalysisOpts.learnEnd,
+        });
+      }
       mount.innerHTML = PatternAnalysisUI.renderAnalysisPanel(analysis, {
         dates: dates,
         learnEnd: csvAnalysisOpts.learnEnd,

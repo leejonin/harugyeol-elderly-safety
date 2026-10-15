@@ -54,6 +54,11 @@
         "\n[센서 참고 — 대화에서 단정하지 말 것]\n" + context.sensorHints
       );
     }
+    if (context && context.csvDemoHints) {
+      parts.push(
+        "\n[CSV 시연·규칙 분석 참고 — 단정·의료 판단 금지]\n" + context.csvDemoHints
+      );
+    }
     if (context && context.mode === "summary_request") {
       parts.push(
         "\n이번 사용자 메시지는 상태 요약 요청입니다. [상태 요약] 형식만 사용하세요."
@@ -159,6 +164,21 @@
       return Promise.resolve({
         content:
           "- 식사: 확인되지 않음\n- 수면: 확인되지 않음\n- 기분: 확인되지 않음\n- 몸 상태: 확인되지 않음\n- 추가 확인: GPT API 키를 입력하면 대화 내용을 바탕으로 요약할 수 있습니다. (현재 목 모드)",
+        isMock: true,
+      });
+    }
+    if (
+      context &&
+      context.csvDemoHints &&
+      (text.indexOf("CSV") >= 0 ||
+        text.indexOf("csv") >= 0 ||
+        text.indexOf("시연") >= 0 ||
+        text.indexOf("데이터셋") >= 0 ||
+        text.indexOf("E001") >= 0)
+    ) {
+      return Promise.resolve({
+        content:
+          "합성 CSV 시연 정보가 브라우저에 준비되어 있습니다. (목 모드) API 키를 연결하면 더 자세히 설명해 드릴 수 있어요. CSV 시연 화면에서 차트와 규칙 분석도 확인하실 수 있습니다.",
         isMock: true,
       });
     }

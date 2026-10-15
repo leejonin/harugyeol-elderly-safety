@@ -1,7 +1,7 @@
 # 10.1.1 GPT 대화 및 상태 요약
 
 - 문서 초기 생성 일시: 2026-10-15 12:04 KST
-- 문서 수정 일시: 2026-10-15 12:04 KST
+- 문서 수정 일시: 2026-10-15 16:30 KST
 
 ## 1. 개요
 
@@ -17,12 +17,14 @@
 
 사용자는 접근 가능한 어르신을 선택하고 대화할 수 있습니다. API 키를 입력하면 브라우저가 OpenAI API를 직접 호출하고, API 키를 입력하지 않으면 목 응답을 반환합니다. 목 모드를 강제로 선택하거나 API 호출이 실패한 경우에도 목 응답으로 대체합니다. `상태 요약` 버튼으로 명시적으로 요청한 경우에만 요약 형식을 사용하며 대화와 마지막 요약은 대상자별 `localStorage`에 저장됩니다.
 
+합성 CSV 시연(E001) 요약·규칙 분석 결과는 `sessionStorage` 스냅샷으로 AI 대화 시스템 프롬프트에 `[CSV 시연·규칙 분석 참고]` 블록으로 전달됩니다. CSV 시연·생활패턴 화면에서 CSV를 로드하면 스냅샷이 갱신되고, AI 대화 설정에서 「CSV 참고 갱신」으로 HTTP 환경에서 직접 불러올 수 있습니다.
+
 ## 4. 현재 구현 상태
 
 - 상태: **구현 완료**
 - 실제 동작: 대상자 선택, 대화 저장·초기화, API 키·모델 설정, OpenAI API 호출, 무키 목 응답, 호출 실패 시 목 폴백 및 명시적 상태 요약이 동작합니다.
 - 제한: API 키와 대화가 현재 브라우저에 저장되고 브라우저에서 OpenAI로 직접 전송됩니다. 서버 프록시·운영 DB가 없으며 의료 판단이나 안전 확정 기능이 아닙니다.
-- 주요 코드 경로: `chat.html`, `js/pages/chat.js`, `js/llm/harugyeol-llm.js`, `js/common.js`, `js/data.js`
+- 주요 코드 경로: `chat.html`, `js/pages/chat.js`, `js/chat-csv-context.js`, `js/csv-demo.js`, `js/pattern-analysis.js`, `js/llm/harugyeol-llm.js`, `js/common.js`, `js/data.js`
 - 참고 경로: `js/llm/engine.js`, `js/llm/openai-backend.js`, `js/llm/mock-backend.js`, `js/prompts/harugyeol-assistant.js`는 모듈형 구현 파일이며 현재 `chat.html`은 통합본 `js/llm/harugyeol-llm.js`를 로드합니다.
 
 ## 5. 수정한 작업 전후 내용

@@ -7,6 +7,7 @@
   var Common = window.Harugyeol.Common;
   var Data = window.Harugyeol.Data;
   var LLM = window.Harugyeol.LLM;
+  var ChatCsvContext = window.Harugyeol.ChatCsvContext;
 
   if (!Common || !Data || !LLM) {
     var rootErr = document.getElementById("chat-root");
@@ -138,6 +139,48 @@
    * @param {string} elderId
    * @returns {string}
    */
+  /**
+   * CSV 시연 스냅샷을 GPT 참고 문구로 반환합니다.
+   * @returns {string}
+   */
+  function buildCsvDemoHints() {
+    if (!ChatCsvContext) {
+      return "";
+    }
+    return ChatCsvContext.buildHintsText(ChatCsvContext.getSnapshot());
+  }
+
+  /**
+   * CSV 참고 데이터 UI 한 줄
+   * @returns {string}
+   */
+  function csvContextSidebarHtml() {
+    if (!ChatCsvContext) {
+      return "";
+    }
+    var snap = ChatCsvContext.getSnapshot();
+    var status = snap
+      ? "준비됨 · E001 " +
+        snap.rowCount +
+        "행 · 분석일 " +
+        (snap.analysis && snap.analysis.analyzeDate
+          ? snap.analysis.analyzeDate
+          : snap.analyzeDate || "—")
+      : "없음 — CSV 시연·생활패턴에서 불러오거나 아래 버튼 사용";
+    return (
+      "<h3 class=\"gpt-chat-sidebar__title\">CSV 시연 참고</h3>" +
+      '<p class="muted gpt-chat-sidebar__hint">' +
+      Common.escapeHtml(status) +
+      "</p>" +
+      '<p class="muted gpt-chat-sidebar__hint">합성 데이터이며 GPT 답변은 시연 설명용입니다.</p>' +
+      '<div class="gpt-chat-sidebar__actions">' +
+      '<button type="button" class="btn btn--secondary btn--small" id="btn-refresh-csv-context">CSV 참고 갱신</button> ' +
+      '<a class="btn btn--small" href="' +
+      Common.appPath("dataset.html") +
+      '">CSV 시연</a></div>'
+    );
+  }
+
   function buildSensorHints(elderId) {
     var signals = store.signals
       .filter(function (s) {
@@ -341,6 +384,7 @@
     html += '<button type="button" class="btn btn--small" id="btn-save-key">키 저장</button>';
     html += '<button type="button" class="btn btn--secondary btn--small" id="btn-clear-key">키 삭제</button>';
     html += "</div>";
+    html += csvContextSidebarHtml();
     if (thread.lastSummary) {
       html += '<details class="gpt-chat-summary-fold"><summary>마지막 상태 요약</summary>';
       html +=
@@ -378,7 +422,12 @@
       html += '<div class="gpt-chat-welcome__logo">하</div>';
       html += "<h2>하루결 AI 도우미</h2>";
       html += "<p>어르신과 편하게 대화하거나, 상태 요약을 요청할 수 있습니다.</p>";
-      html += '<p class="muted">☰ 설정에서 GPT API 키를 입력하세요.</p></div>';
+      html += '<p class="muted">☰ 설정에서 GPT API 키를 입력하세요.</p>';
+      if (ChatCsvContext && ChatCsvContext.hasSnapshot()) {
+        html +=
+          '<p class="muted">CSV 시연·규칙 분석 요약이 대화 참고로 연결되어 있습니다.</p>';
+      }
+      html += "</div>";
     } else {
       html += '<div class="gpt-chat-thread__inner">';
       thread.messages.forEach(function (m, index) {
@@ -511,9 +560,11 @@
         scrollChatToBottom();
       }
 
+      var csvHints = buildCsvDemoHints();
       var context = {
         elderName: elder ? elder.name : "",
         sensorHints: buildSensorHints(elderId),
+        csvDemoHints: csvHints,
         mode: summaryMode ? "summary_request" : "chat",
       };
 
@@ -569,6 +620,23 @@
         render(elderId);
       }
     });
+
+    var refreshCsvBtn = document.getElementById("btn-refresh-csv-context");
+    if (refreshCsvBtn && ChatCsvContext) {
+      refreshCsvBtn.addEventListener("click", function () {
+        refreshCsvBtn.disabled = true;
+        refreshCsvBtn.textContent = "불러오는 중…";
+        ChatCsvContext.refreshFromNetwork(Common)
+          .then(function () {
+            render(elderId);
+          })
+          .catch(function (err) {
+            alert(err.message || "CSV 참고 데이터를 불러오지 못했습니다.");
+            refreshCsvBtn.disabled = false;
+            refreshCsvBtn.textContent = "CSV 참고 갱신";
+          });
+      });
+    }
   }
 
   var elderParam = Common.getQueryParam("elder");
@@ -587,6 +655,19 @@
       '<div class="section"><p>연결된 대상자가 없습니다. <a href="login.html">로그인</a> 후 이용하세요.</p></div>';
   } else {
     render(selectedId);
+    if (
+      ChatCsvContext &&
+      !ChatCsvContext.hasSnapshot() &&
+      window.location.protocol !== "file:"
+    ) {
+      ChatCsvContext.refreshFromNetwork(Common)
+        .then(function () {
+          render(selectedId);
+        })
+        .catch(function () {
+          /* CSV 참고 없이 대화 가능 */
+        });
+    }
   }
 
   window.addEventListener("beforeunload", stopSpeech);

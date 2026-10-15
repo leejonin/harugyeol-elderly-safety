@@ -198,6 +198,13 @@
     state.loadSource = bundle.loadSource || "";
     state.loadError = "";
     state.page = 1;
+    if (window.Harugyeol.ChatCsvContext) {
+      window.Harugyeol.ChatCsvContext.persistFromRows(state.allRows, {
+        source: "dataset",
+        analyzeDate: state.analysisDate,
+        learnEnd: state.analysisLearnEnd,
+      });
+    }
     renderMain();
   }
 
