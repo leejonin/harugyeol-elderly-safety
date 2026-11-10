@@ -7,3 +7,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+Info/api_key_qr.png
+*.ppt
+*.pptx

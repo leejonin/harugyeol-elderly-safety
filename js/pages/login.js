@@ -29,18 +29,23 @@
     }).join(", ");
     return (
       '<div class="login-card">' +
+      '<div class="login-card__icon" aria-hidden="true">' +
+      (user.loginKey === "facility" ? "🏥" : "👨‍👩‍👧") +
+      "</div>" +
       "<h2>" +
       Common.escapeHtml(user.name) +
       "</h2>" +
       '<p class="muted">' +
       Common.escapeHtml(user.role) +
       "</p>" +
-      '<p><small>담당: ' +
+      '<p>담당 어르신: <strong>' +
       Common.escapeHtml(names || "없음") +
-      "</small></p>" +
-      '<button type="button" class="btn" data-login="' +
+      "</strong></p>" +
+      '<button type="button" class="btn btn--large" data-login="' +
       Common.escapeHtml(user.loginKey) +
-      '">이 계정으로 입장</button>' +
+      '">' +
+      Common.escapeHtml(user.name) +
+      " 님으로 들어가기</button>" +
       "</div>"
     );
   }

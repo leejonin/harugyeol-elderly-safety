@@ -66,21 +66,40 @@
    * @returns {string}
    */
   function renderElderList() {
-    var html = '<aside class="section"><h2>담당 대상자</h2><ul class="elder-list">';
+    var html =
+      '<aside class="section" aria-labelledby="elder-list-title"><h2 id="elder-list-title">담당 어르신 (' +
+      elders.length +
+      "명)</h2>" +
+      '<ul class="elder-list">';
     elders.forEach(function (e) {
+      var info = Common.getStatusInfo(e.summaryStatus);
       var cls = e.needsAttention ? " needs-attention" : "";
-      var sel = e.id === selectedId ? " is-selected" : "";
+      var isSel = e.id === selectedId;
+      var stateCls = e.needsAttention ? " elder-card__state--alert" : "";
       html +=
         '<li class="' +
         cls +
         '"><a class="' +
-        sel +
+        (isSel ? " is-selected" : "") +
         '" href="dashboard.html?elder=' +
         encodeURIComponent(e.id) +
-        '">' +
+        '"' +
+        (isSel ? ' aria-current="true"' : "") +
+        ">" +
+        '<span class="elder-avatar" aria-hidden="true">' +
+        Common.escapeHtml(e.name.charAt(0)) +
+        '<span class="elder-avatar__dot elder-avatar__dot--' +
+        (info.tone || "neutral") +
+        '"></span></span>' +
+        '<span class="elder-card__text"><span class="elder-card__name">' +
         Common.escapeHtml(e.name) +
-        (e.needsAttention ? " · 확인 필요" : "") +
-        "</a></li>";
+        " 어르신</span>" +
+        '<span class="elder-card__state' +
+        stateCls +
+        '">' +
+        (info.icon ? '<span aria-hidden="true">' + info.icon + "</span> " : "") +
+        Common.escapeHtml(e.needsAttention ? "확인 필요" : info.easy || info.label) +
+        "</span></span></a></li>";
     });
     html += "</ul></aside>";
     return html;
@@ -130,15 +149,74 @@
           ? "motion_none"
           : elder.summaryStatus;
 
-    var html = '<div class="section">';
-    html += "<h2>" + Common.escapeHtml(elder.name) + "</h2>";
-    html += "<p>" + Common.renderStatusBadge(elder.summaryStatus) + "</p>";
+    var info = Common.getStatusInfo(elder.summaryStatus);
+    var html = "<div>";
+
+    // 1) 한눈에 보는 상태 카드 (신호등)
     html +=
-      '<p class="muted">최근 안부 확인: ' +
-      Common.formatDateTime(elder.lastCheckAt) +
-      " · 데이터 갱신: " +
-      Common.formatDateTime(elder.lastDataAt) +
-      "</p>";
+      '<section class="status-hero status-hero--' +
+      (info.tone || "neutral") +
+      '" aria-labelledby="status-hero-name" aria-live="polite">' +
+      '<div class="status-hero__icon" aria-hidden="true">' +
+      (info.icon || "ℹ️") +
+      "</div>" +
+      "<div>" +
+      '<h2 class="status-hero__name" id="status-hero-name">' +
+      Common.escapeHtml(elder.name) +
+      " 어르신</h2>" +
+      '<p class="status-hero__easy">' +
+      Common.escapeHtml(info.easy || info.label) +
+      "</p>" +
+      '<p class="status-hero__meta">' +
+      Common.renderStatusBadge(elder.summaryStatus) +
+      "</p>" +
+      "</div>" +
+      '<div class="status-hero__actions">';
+    if (unread.length > 0) {
+      html +=
+        '<a class="btn btn--large btn--danger" href="alerts.html?id=' +
+        encodeURIComponent(unread[0].id) +
+        '"><span aria-hidden="true">🔔</span> 알림 확인하기 (' +
+        unread.length +
+        "건)</a>";
+    }
+    html +=
+      '<a class="btn btn--large' +
+      (unread.length > 0 ? " btn--secondary" : "") +
+      '" href="chat.html?elder=' +
+      encodeURIComponent(elderId) +
+      '"><span aria-hidden="true">💬</span> 안부 대화하기</a>' +
+      '<a class="btn btn--large btn--secondary" href="pattern.html?elder=' +
+      encodeURIComponent(elderId) +
+      '"><span aria-hidden="true">📈</span> 생활 기록 보기</a>' +
+      "</div></section>";
+
+    // 2) 요약 타일
+    var disconnected = devices.filter(function (d) {
+      return d.connection === "disconnected";
+    }).length;
+    html += '<div class="quick-tiles">';
+    html += quickTile("🗣️", "마지막 안부 확인", Common.formatRelative(elder.lastCheckAt), Common.formatDateTime(elder.lastCheckAt));
+    html += quickTile("📥", "마지막 소식(데이터)", Common.formatRelative(elder.lastDataAt), Common.formatDateTime(elder.lastDataAt));
+    html += quickTile(
+      "🔔",
+      "확인 안 한 알림",
+      unread.length + "건",
+      null,
+      unread.length > 0 ? "alerts.html?id=" + encodeURIComponent(unread[0].id) : "alerts.html",
+      unread.length > 0
+    );
+    html += quickTile(
+      disconnected > 0 ? "🔌" : "✅",
+      "기기 연결",
+      disconnected > 0 ? disconnected + "개 확인 필요" : "모두 연결됨",
+      devices.length + "개 등록",
+      "settings.html",
+      disconnected > 0
+    );
+    html += "</div>";
+
+    html += '<div class="section"><h2>자세히 보기</h2>';
 
     if (baseline) {
       html += "<h3>분석 준비</h3><p class=\"muted\">" + Common.escapeHtml(baseline.note) + "</p>";
@@ -173,11 +251,13 @@
       html += '<ul class="signal-list">';
       signals.forEach(function (s) {
         html +=
-          "<li><strong>" +
-          Common.formatDateTime(s.at) +
-          "</strong> — " +
+          '<li><span class="signal-list__time">' +
+          Common.escapeHtml(Common.formatRelative(s.at)) +
+          "</span><span>" +
           Common.escapeHtml(s.summary) +
-          "</li>";
+          '</span><span class="signal-list__sub">' +
+          Common.formatDateTime(s.at) +
+          "</span></li>";
       });
       html += "</ul>";
       html +=
@@ -239,8 +319,44 @@
     html += "<p>" + Common.renderStatusBadge(motionStatus) + "</p>";
     html += "<p class=\"muted\">이상 신호가 없다는 이유만으로 안전이 확정된 것은 아닙니다.</p>";
 
-    html += "</div>";
+    html += "</div></div>";
     return html;
+  }
+
+  /**
+   * 요약 타일 HTML
+   * @param {string} icon
+   * @param {string} label
+   * @param {string} value
+   * @param {string|null} sub
+   * @param {string} [href]
+   * @param {boolean} [isAlert]
+   * @returns {string}
+   */
+  function quickTile(icon, label, value, sub, href, isAlert) {
+    var tag = href ? "a" : "div";
+    return (
+      "<" +
+      tag +
+      ' class="quick-tile' +
+      (isAlert ? " quick-tile--alert" : "") +
+      '"' +
+      (href ? ' href="' + href + '"' : "") +
+      ">" +
+      '<span class="quick-tile__icon" aria-hidden="true">' +
+      icon +
+      "</span>" +
+      '<span class="quick-tile__label">' +
+      Common.escapeHtml(label) +
+      "</span>" +
+      '<span class="quick-tile__value">' +
+      Common.escapeHtml(value) +
+      "</span>" +
+      (sub ? '<span class="signal-list__sub">' + Common.escapeHtml(sub) + "</span>" : "") +
+      "</" +
+      tag +
+      ">"
+    );
   }
 
   document.getElementById("dashboard-root").innerHTML =
